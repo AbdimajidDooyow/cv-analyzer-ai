@@ -1,0 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@1,600&display=swap');
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Playfair Display", serif;
+  
+  --color-background: var(--bg-app);
+  --color-foreground: var(--text-primary);
+  --color-muted: var(--text-muted);
+  --color-secondary: var(--text-secondary);
+  --color-border: var(--border-main);
+  --color-card: var(--bg-card);
+  --color-input: var(--bg-input);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+}
+
+@layer base {
+  :root {
+    --bg-app: #FFFFFF;
+    --bg-card: #FFFFFF;
+    --bg-input: #F8F8F7;
+    --border-main: rgba(0, 0, 0, 0.1);
+    --text-primary: #000000;
+    --text-secondary: rgba(0, 0, 0, 0.7);
+    --text-muted: rgba(0, 0, 0, 0.4);
+    --accent: #000000;
+    --accent-hover: #1A1A1A;
+    --surface: rgba(0, 0, 0, 0.02);
+    --surface-hover: rgba(0, 0, 0, 0.05);
+  }
+
+  .dark {
+    --bg-app: #0A0A0A;
+    --bg-card: #141412;
+    --bg-input: #1C1C1A;
+    --border-main: rgba(255, 255, 255, 0.1);
+    --text-primary: #FFFFFF;
+    --text-secondary: rgba(255, 255, 255, 0.7);
+    --text-muted: rgba(255, 255, 255, 0.4);
+    --accent: #FFFFFF;
+    --accent-hover: #E5E5E5;
+    --surface: rgba(255, 255, 255, 0.02);
+    --surface-hover: rgba(255, 255, 255, 0.05);
+  }
+
+  body {
+    background-color: var(--bg-app);
+    color: var(--text-primary);
+    @apply antialiased transition-colors duration-300;
+  }
+}
+
+.glass-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-main);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.02);
+  @apply rounded-[2rem] transition-all duration-300;
+}
+
+.dark .glass-card {
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.input-field {
+  width: 100%;
+  @apply p-5 rounded-2xl text-sm leading-relaxed outline-none transition-all focus:ring-2 focus:ring-black/5 focus:border-black/20;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-main);
+  color: var(--text-primary);
+}
+
+.dark .input-field {
+  @apply focus:ring-white/5 focus:border-white/20;
+}
+
+.markdown-body {
+  @apply prose prose-sm max-w-none dark:prose-invert;
+  color: var(--text-secondary);
+}
+
+.markdown-body strong {
+  color: var(--text-primary);
+}
+
+.tab-active {
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  @apply shadow-xl border border-border;
+}
+
