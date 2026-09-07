@@ -31,3 +31,5 @@ This app is configured for Vercel with a serverless API handler in [api/index.ts
 The frontend is served from the static build output and `/api/*` is routed to the serverless function.
 
 If `/api/auth/signup` returns a 503, it usually means `MONGO_URI` is missing or the MongoDB Atlas cluster is not reachable from Vercel.
+
+If you see a Vercel `FUNCTION_INVOCATION_FAILED` on signup, increase the function duration as configured in [vercel.json](vercel.json) and confirm Atlas network access allows Vercel to connect.

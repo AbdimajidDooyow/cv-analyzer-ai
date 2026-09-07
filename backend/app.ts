@@ -3,12 +3,9 @@ import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { MongoClient, ObjectId } from "mongodb";
-import { GoogleGenAI, Type } from "@google/genai";
 
 const app = express();
 
-const aiKey = process.env.GEMINI_API_KEY;
-const ai = aiKey ? new GoogleGenAI({ apiKey: aiKey }) : null;
 const mongoUri = process.env.MONGO_URI || "";
 const mongoDbName = process.env.MONGO_DB_NAME || "recruitready";
 const jwtSecret = process.env.JWT_SECRET || "replace_this_with_secure_secret";
@@ -20,6 +17,34 @@ const mongoClient = mongoUri
     })
   : null;
 let mongoDbPromise: Promise<any> | null = null;
+let aiPromise: Promise<any> | null = null;
+
+async function getAi() {
+  const aiKey = process.env.GEMINI_API_KEY;
+  if (!aiKey) {
+    throw new Error("GEMINI_API_KEY is missing.");
+  }
+
+  if (!aiPromise) {
+    aiPromise = import("@google/genai").then(({ GoogleGenAI }) => new GoogleGenAI({ apiKey: aiKey }));
+  }
+
+  return aiPromise;
+}
+
+function isMongoConnectivityError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+
+  const text = `${error.name} ${error.message}`.toLowerCase();
+  return (
+    text.includes("serverselectionerror") ||
+    text.includes("server selection timed out") ||
+    text.includes("timed out") ||
+    text.includes("econnrefused") ||
+    text.includes("enotfound") ||
+    text.includes("authentication failed")
+  );
+}
 
 async function getMongoDb() {
   if (!mongoClient) {
@@ -56,7 +81,7 @@ function authMiddleware(req: any, res: any, next: any) {
   }
 }
 
-function createAnalysisSchema() {
+function createAnalysisSchema(Type: any) {
   return {
     type: Type.OBJECT,
     required: [
@@ -127,12 +152,6 @@ function createAnalysisSchema() {
   };
 }
 
-function ensureAiReady() {
-  if (!ai) {
-    throw new Error("GEMINI_API_KEY is missing.");
-  }
-}
-
 function validateTextInput(value: unknown, fieldName: string) {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`Missing required field: ${fieldName}`);
@@ -162,6 +181,11 @@ app.post("/api/auth/signup", async (req, res) => {
     res.json({ token, user });
   } catch (err: any) {
     console.error("Signup error:", err);
+    if (isMongoConnectivityError(err)) {
+      return res.status(503).json({
+        error: "MongoDB connection failed in Vercel. Check MONGO_URI, Atlas network access, and credentials.",
+      });
+    }
     res.status(503).json({ error: err.message || "Signup failed" });
   }
 });
@@ -181,6 +205,11 @@ app.post("/api/auth/signin", async (req, res) => {
     res.json({ token, user: { id: user._id.toString(), email: user.email, full_name: user.full_name } });
   } catch (err: any) {
     console.error("Signin error:", err);
+    if (isMongoConnectivityError(err)) {
+      return res.status(503).json({
+        error: "MongoDB connection failed in Vercel. Check MONGO_URI, Atlas network access, and credentials.",
+      });
+    }
     res.status(503).json({ error: err.message || "Signin failed" });
   }
 });
@@ -194,6 +223,11 @@ app.get("/api/auth/me", authMiddleware, async (req: any, res) => {
     res.json({ user: { id: user._id.toString(), email: user.email, full_name: user.full_name } });
   } catch (err: any) {
     console.error("Me error:", err);
+    if (isMongoConnectivityError(err)) {
+      return res.status(503).json({
+        error: "MongoDB connection failed in Vercel. Check MONGO_URI, Atlas network access, and credentials.",
+      });
+    }
     res.status(503).json({ error: err.message || "Failed" });
   }
 });
@@ -212,6 +246,11 @@ app.post("/api/analysis/save", authMiddleware, async (req: any, res) => {
     res.json({ id: result.insertedId.toString(), ok: true });
   } catch (err: any) {
     console.error("Save analysis error:", err);
+    if (isMongoConnectivityError(err)) {
+      return res.status(503).json({
+        error: "MongoDB connection failed in Vercel. Check MONGO_URI, Atlas network access, and credentials.",
+      });
+    }
     res.status(503).json({ error: err.message || "Failed to save" });
   }
 });
@@ -229,13 +268,19 @@ app.get("/api/analysis", authMiddleware, async (req: any, res) => {
     res.json({ items });
   } catch (err: any) {
     console.error("Get analyses error:", err);
+    if (isMongoConnectivityError(err)) {
+      return res.status(503).json({
+        error: "MongoDB connection failed in Vercel. Check MONGO_URI, Atlas network access, and credentials.",
+      });
+    }
     res.status(503).json({ error: err.message || "Failed" });
   }
 });
 
 app.post("/api/analyze", async (req, res) => {
   try {
-    ensureAiReady();
+    const { Type } = await import("@google/genai");
+    const ai = await getAi();
     const cvText = validateTextInput(req.body?.cvText, "cvText");
     const jobDescription = validateTextInput(req.body?.jobDescription, "jobDescription");
 
@@ -258,7 +303,7 @@ Return a structured and helpful evaluation in JSON format.
       contents: prompt,
       config: {
         responseMimeType: "application/json",
-        responseSchema: createAnalysisSchema(),
+        responseSchema: createAnalysisSchema(Type),
       },
     });
 
@@ -273,7 +318,7 @@ Return a structured and helpful evaluation in JSON format.
 
 app.post("/api/rewrite", async (req, res) => {
   try {
-    ensureAiReady();
+    const ai = await getAi();
     const cvText = validateTextInput(req.body?.cvText, "cvText");
     const jobDescription = validateTextInput(req.body?.jobDescription, "jobDescription");
 
