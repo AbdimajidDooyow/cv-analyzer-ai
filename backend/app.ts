@@ -11,7 +11,36 @@ const aiKey = process.env.GEMINI_API_KEY;
 const ai = aiKey ? new GoogleGenAI({ apiKey: aiKey }) : null;
 const mongoUri = process.env.MONGO_URI || "";
 const mongoDbName = process.env.MONGO_DB_NAME || "recruitready";
-const jwtSecret = process.env.JWT_SECRET || "replace_this_with_secure_secret";
+const jwtSecret = process.env.JWT_SECRET || "";
+
+function validateAuthConfig() {
+  const errors: string[] = [];
+
+  if (!mongoUri.trim()) {
+    errors.push("MONGO_URI is required.");
+  }
+
+  const trimmedJwtSecret = jwtSecret.trim();
+  if (!trimmedJwtSecret) {
+    errors.push("JWT_SECRET is required.");
+  } else {
+    const insecureDefaults = new Set(["replace_this_with_secure_secret", "changeme", "secret", "default", "jwt_secret"]);
+    if (insecureDefaults.has(trimmedJwtSecret.toLowerCase())) {
+      errors.push("JWT_SECRET uses an insecure default value.");
+    }
+    if (trimmedJwtSecret.length < 32) {
+      errors.push("JWT_SECRET must be at least 32 characters long.");
+    }
+  }
+
+  if (errors.length > 0) {
+    const message = `Invalid auth environment configuration: ${errors.join(" ")}`;
+    console.error(message);
+    throw new Error(message);
+  }
+}
+
+validateAuthConfig();
 
 const mongoClient = mongoUri ? new MongoClient(mongoUri) : null;
 let mongoDbPromise: Promise<any> | null = null;
@@ -130,6 +159,10 @@ function validateTextInput(value: unknown, fieldName: string) {
   return value.trim();
 }
 
+function sendAuthServerError(res: any) {
+  return res.status(500).json({ error: "Authentication service is temporarily unavailable" });
+}
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
@@ -151,7 +184,7 @@ app.post("/api/auth/signup", async (req, res) => {
     res.json({ token, user });
   } catch (err: any) {
     console.error("Signup error:", err);
-    res.status(500).json({ error: err.message || "Signup failed" });
+    return sendAuthServerError(res);
   }
 });
 
@@ -170,7 +203,7 @@ app.post("/api/auth/signin", async (req, res) => {
     res.json({ token, user: { id: user._id.toString(), email: user.email, full_name: user.full_name } });
   } catch (err: any) {
     console.error("Signin error:", err);
-    res.status(500).json({ error: err.message || "Signin failed" });
+    return sendAuthServerError(res);
   }
 });
 

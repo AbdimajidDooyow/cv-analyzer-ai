@@ -29,3 +29,9 @@ This app is configured for Vercel with a serverless API handler in [api/index.ts
 4. Keep the output as the default Vite `dist` folder
 
 The frontend is served from the static build output and `/api/*` is routed to the serverless function.
+
+### Required backend auth environment variables
+
+- `MONGO_URI` (required): MongoDB connection string (example: `mongodb+srv://<user>:<password>@cluster.example.mongodb.net/?retryWrites=true&w=majority`)
+- `JWT_SECRET` (required): strong secret used to sign auth tokens. Must not use placeholder values and must be at least 32 characters long.
+- `MONGO_DB_NAME` (optional): defaults to `recruitready` when omitted.
