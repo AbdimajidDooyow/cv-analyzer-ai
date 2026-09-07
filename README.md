@@ -29,3 +29,5 @@ This app is configured for Vercel with a serverless API handler in [api/index.ts
 4. Keep the output as the default Vite `dist` folder
 
 The frontend is served from the static build output and `/api/*` is routed to the serverless function.
+
+If `/api/auth/signup` returns a 503, it usually means `MONGO_URI` is missing or the MongoDB Atlas cluster is not reachable from Vercel.

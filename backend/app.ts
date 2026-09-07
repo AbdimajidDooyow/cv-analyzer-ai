@@ -13,16 +13,27 @@ const mongoUri = process.env.MONGO_URI || "";
 const mongoDbName = process.env.MONGO_DB_NAME || "recruitready";
 const jwtSecret = process.env.JWT_SECRET || "replace_this_with_secure_secret";
 
-const mongoClient = mongoUri ? new MongoClient(mongoUri) : null;
+const mongoClient = mongoUri
+  ? new MongoClient(mongoUri, {
+      serverSelectionTimeoutMS: 5000,
+      maxPoolSize: 1,
+    })
+  : null;
 let mongoDbPromise: Promise<any> | null = null;
 
 async function getMongoDb() {
   if (!mongoClient) {
-    throw new Error("MongoDB not configured");
+    throw new Error("MongoDB not configured. Set MONGO_URI in Vercel.");
   }
 
   if (!mongoDbPromise) {
-    mongoDbPromise = mongoClient.connect().then(() => mongoClient.db(mongoDbName));
+    mongoDbPromise = mongoClient
+      .connect()
+      .then(() => mongoClient.db(mongoDbName))
+      .catch((error) => {
+        mongoDbPromise = null;
+        throw error;
+      });
   }
 
   return mongoDbPromise;
@@ -151,7 +162,7 @@ app.post("/api/auth/signup", async (req, res) => {
     res.json({ token, user });
   } catch (err: any) {
     console.error("Signup error:", err);
-    res.status(500).json({ error: err.message || "Signup failed" });
+    res.status(503).json({ error: err.message || "Signup failed" });
   }
 });
 
@@ -170,7 +181,7 @@ app.post("/api/auth/signin", async (req, res) => {
     res.json({ token, user: { id: user._id.toString(), email: user.email, full_name: user.full_name } });
   } catch (err: any) {
     console.error("Signin error:", err);
-    res.status(500).json({ error: err.message || "Signin failed" });
+    res.status(503).json({ error: err.message || "Signin failed" });
   }
 });
 
@@ -183,7 +194,7 @@ app.get("/api/auth/me", authMiddleware, async (req: any, res) => {
     res.json({ user: { id: user._id.toString(), email: user.email, full_name: user.full_name } });
   } catch (err: any) {
     console.error("Me error:", err);
-    res.status(500).json({ error: err.message || "Failed" });
+    res.status(503).json({ error: err.message || "Failed" });
   }
 });
 
@@ -201,7 +212,7 @@ app.post("/api/analysis/save", authMiddleware, async (req: any, res) => {
     res.json({ id: result.insertedId.toString(), ok: true });
   } catch (err: any) {
     console.error("Save analysis error:", err);
-    res.status(500).json({ error: err.message || "Failed to save" });
+    res.status(503).json({ error: err.message || "Failed to save" });
   }
 });
 
@@ -218,7 +229,7 @@ app.get("/api/analysis", authMiddleware, async (req: any, res) => {
     res.json({ items });
   } catch (err: any) {
     console.error("Get analyses error:", err);
-    res.status(500).json({ error: err.message || "Failed" });
+    res.status(503).json({ error: err.message || "Failed" });
   }
 });
 
