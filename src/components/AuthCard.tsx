@@ -12,15 +12,15 @@ import {
   ShieldAlert,
   User,
 } from "lucide-react";
-import type { Session } from "@supabase/supabase-js";
+import type { } from "@supabase/supabase-js";
 import Button from "./Button";
-import { hasSupabaseConfig, supabase } from "../lib/supabaseClient";
+import * as authService from "../services/authService";
 
 type AuthCardProps = {
-  session: Session | null;
+  session: any | null;
   onAuthenticated: () => void;
   onStartAnalyze: () => void;
-  onSignOut: () => Promise<void>;
+  onSignOut: () => Promise<void> | (() => void);
 };
 
 type Mode = "sign-in" | "sign-up";
@@ -44,11 +44,6 @@ export default function AuthCard({
     setError(null);
     setSuccess(null);
 
-    if (!hasSupabaseConfig || !supabase) {
-      setError("Supabase env vars are missing. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
-      return;
-    }
-
     if (!email.trim() || !password.trim()) {
       setError("Enter your email and password.");
       return;
@@ -62,46 +57,28 @@ export default function AuthCard({
     setLoading(true);
     try {
       if (mode === "sign-up") {
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: {
-            data: {
-              full_name: fullName.trim(),
-            },
-          },
-        });
-
-        if (signUpError) {
-          throw signUpError;
-        }
-
-        if (data.session) {
+        const data = await authService.signup(email.trim(), password, fullName.trim());
+        if (data?.user) {
+          setSuccess("Account created successfully.");
           onAuthenticated();
           return;
         }
-
-        setSuccess("Account created successfully. Please check your email to confirm.");
+        setSuccess("Account created successfully. Please check your email if required.");
         setMode("sign-in");
         return;
       }
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-
-      if (signInError) {
-        throw signInError;
+      const data = await authService.signin(email.trim(), password);
+      if (data?.user) {
+        onAuthenticated();
       }
-
-      onAuthenticated();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Authentication failed.";
-      setError(message);
+    } catch (err: any) {
+      setError(err instanceof Error ? err.message : "Authentication failed.");
     } finally {
       setLoading(false);
     }
+
+    // removed legacy supabase logic
   };
 
   if (session) {
@@ -119,10 +96,10 @@ export default function AuthCard({
             </div>
           </div>
 
-          <div className="space-y-3 rounded-3xl border border-border bg-surface p-5">
+            <div className="space-y-3 rounded-3xl border border-border bg-surface p-5">
             <div className="flex items-center gap-3 text-sm text-secondary">
               <User className="w-4 h-4 text-blue-600" />
-              <span>{session.user.email}</span>
+              <span>{(session.full_name && session.full_name.split(' ')[0]) || (session.email && session.email.split('@')[0])}</span>
             </div>
             <p className="text-sm text-secondary leading-relaxed">
               Your session is active. You can jump into analysis and store results against this account.
@@ -180,14 +157,7 @@ export default function AuthCard({
           </button>
         </div>
 
-        {!hasSupabaseConfig && (
-          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300 flex items-start gap-3">
-            <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
-            <span>
-              Missing Supabase env vars. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before testing auth.
-            </span>
-          </div>
-        )}
+        {/* Auth uses backend API (MongoDB). */}
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           <AnimatePresence mode="wait">

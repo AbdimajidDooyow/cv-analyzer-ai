@@ -2,15 +2,16 @@ import { useState, useEffect } from "react";
 import { Sun, Moon, Target, TrendingUp, Edit3, MessageSquare, ArrowRight, LogOut, User, Sparkles, ChevronRight } from "lucide-react";
 import { motion } from "motion/react";
 import { DotLottieReact } from "@lottiefiles/dotlottie-react";
-import type { Session } from "@supabase/supabase-js";
+import * as authService from "./services/authService";
 import CVAnalyzer from "./components/CVAnalyzer";
+import Dashboard from "./components/Dashboard";
 import Button from "./components/Button";
 import AuthCard from "./components/AuthCard";
-import { supabase } from "./lib/supabaseClient";
+// supabase client is no longer used for auth
 
 export default function App() {
-  const [view, setView] = useState<"landing" | "auth" | "analyze">("landing");
-  const [session, setSession] = useState<Session | null>(null);
+  const [view, setView] = useState<"landing" | "auth" | "analyze" | "dashboard">("landing");
+  const [session, setSession] = useState<any | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [isDark, setIsDark] = useState(() => {
     if (typeof window !== "undefined") {
@@ -28,34 +29,16 @@ export default function App() {
   }, [view]);
 
   useEffect(() => {
-    if (!supabase) {
-      setAuthReady(true);
-      return;
-    }
-
     let active = true;
-
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (active) {
-          setSession(data.session);
-          setAuthReady(true);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setAuthReady(true);
-        }
-      });
-
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-    });
+    (async () => {
+      const user = await authService.getCurrentUser();
+      if (!active) return;
+      setSession(user);
+      setAuthReady(true);
+    })();
 
     return () => {
       active = false;
-      data.subscription.unsubscribe();
     };
   }, []);
 
@@ -70,12 +53,16 @@ export default function App() {
   }, [isDark]);
 
   const handleAnalyzeClick = () => {
+    if (!session) {
+      setView("auth");
+      return;
+    }
     setView("analyze");
   };
 
   const handleSignOut = async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
+    await authService.signout();
+    setSession(null);
     setView("landing");
   };
 
@@ -93,7 +80,7 @@ export default function App() {
           {authReady && session && (
             <div className="hidden md:flex items-center gap-3 rounded-full border border-border bg-surface px-4 py-2 text-xs uppercase tracking-[0.18em] text-muted">
               <User size={14} className="text-blue-600" />
-              <span className="max-w-[14rem] truncate">{session.user.email}</span>
+              <span className="max-w-[14rem] truncate">{(session.full_name && session.full_name.split(' ')[0]) || (session.email && session.email.split('@')[0])}</span>
             </div>
           )}
 
@@ -109,14 +96,17 @@ export default function App() {
           )}
 
           {authReady && session && (
-            <Button
-              variant="ghost"
-              onClick={handleSignOut}
-              icon={<LogOut size={14} />}
-              className="px-4 py-2 text-[10px]"
-            >
-              Sign Out
-            </Button>
+            <>
+              <Button variant="ghost" onClick={() => setView('dashboard')} className="px-4 py-2 text-[10px]">Dashboard</Button>
+              <Button
+                variant="ghost"
+                onClick={handleSignOut}
+                icon={<LogOut size={14} />}
+                className="px-4 py-2 text-[10px]"
+              >
+                Sign Out
+              </Button>
+            </>
           )}
 
           <button onClick={() => setIsDark(!isDark)} className="transition-colors text-foreground hover:text-blue-600 dark:hover:text-blue-500">
@@ -303,7 +293,11 @@ export default function App() {
             <div className="w-full max-w-md">
               <AuthCard
                 session={session}
-                onAuthenticated={() => setView("analyze")}
+                onAuthenticated={async () => {
+                  const user = await authService.getCurrentUser();
+                  setSession(user);
+                  setView("analyze");
+                }}
                 onStartAnalyze={handleAnalyzeClick}
                 onSignOut={handleSignOut}
               />
@@ -329,8 +323,10 @@ export default function App() {
               </div>
             </div>
           </div>
+        ) : view === 'dashboard' ? (
+          <Dashboard onBack={() => setView('landing')} />
         ) : (
-          <CVAnalyzer onBack={() => setView("landing")} />
+          <CVAnalyzer onBack={() => setView("landing")} session={session} />
         )}
       </main>
 

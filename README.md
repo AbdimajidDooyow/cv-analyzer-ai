@@ -18,3 +18,14 @@ View your app in AI Studio: https://ai.studio/apps/936ef76e-98ed-4e9e-8d41-25f5d
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Deploy on Vercel
+
+This app is configured for Vercel with a serverless API handler in [api/index.ts](api/index.ts) and routing in [vercel.json](vercel.json).
+
+1. Set production env vars in Vercel: `GEMINI_API_KEY`, `MONGO_URI`, `JWT_SECRET`, and optionally `MONGO_DB_NAME`
+2. Push the repo to GitHub and import it into Vercel
+3. Keep the build command as `npm run build`
+4. Keep the output as the default Vite `dist` folder
+
+The frontend is served from the static build output and `/api/*` is routed to the serverless function.

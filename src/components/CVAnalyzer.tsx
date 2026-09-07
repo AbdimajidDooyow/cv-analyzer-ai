@@ -24,6 +24,7 @@ import {
 import Markdown from "react-markdown";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
+import generateAnalysisPdf from "../utils/generatePdf";
 import { analyzeCV, CVAnalysisResult, rewriteCV } from "../services/geminiService";
 import Button from "./Button";
 
@@ -31,7 +32,13 @@ type CVAnalyzerProps = {
   onBack?: () => void;
 };
 
-export default function CVAnalyzer({ onBack }: CVAnalyzerProps) {
+type User = { id: string; email: string; full_name?: string | null };
+
+type CVAnalyzerPropsExtended = CVAnalyzerProps & { session?: User | null };
+
+import * as analysisService from "../services/analysisService";
+
+export default function CVAnalyzer({ onBack, session }: CVAnalyzerPropsExtended) {
   const [cvText, setCvText] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -46,6 +53,10 @@ export default function CVAnalyzer({ onBack }: CVAnalyzerProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "optimization" | "technical" | "preparation">("overview");
 
   const handleAnalyze = async () => {
+    if (!session) {
+      setError("Please sign in to run an analysis.");
+      return;
+    }
     if (!cvText || !jobDescription) {
       setError("Please provide both CV and Job Description");
       return;
@@ -58,6 +69,13 @@ export default function CVAnalyzer({ onBack }: CVAnalyzerProps) {
       const data = await analyzeCV(cvText, jobDescription);
       setResult(data);
       setActiveTab("overview");
+      // save analysis for user (best-effort)
+      try {
+        await analysisService.saveAnalysis({ type: 'analysis', cvText, jobDescription, analysis: data });
+      } catch (e) {
+        // ignore save errors silently
+        console.warn('Failed to save analysis', e);
+      }
     } catch (err) {
       console.error(err);
       setError("Analysis failed. Please check your inputs and try again.");
@@ -67,6 +85,10 @@ export default function CVAnalyzer({ onBack }: CVAnalyzerProps) {
   };
 
   const handleRewrite = async () => {
+    if (!session) {
+      setError("Please sign in to rewrite your resume.");
+      return;
+    }
     if (!cvText || !jobDescription) return;
     setIsRewriting(true);
     // Only clear result if we're doing a full overhaul, otherwise we might be in the optimization tab
@@ -74,6 +96,11 @@ export default function CVAnalyzer({ onBack }: CVAnalyzerProps) {
     try {
       const text = await rewriteCV(cvText, jobDescription);
       setRewrittenCv(text);
+      try {
+        await analysisService.saveAnalysis({ type: 'rewrite', cvText, jobDescription, rewrittenCv: text });
+      } catch (e) {
+        console.warn('Failed to save rewrite', e);
+      }
     } catch (err) {
       console.error(err);
       setError("Rewrite failed. Please try again.");
@@ -98,18 +125,36 @@ export default function CVAnalyzer({ onBack }: CVAnalyzerProps) {
         logging: false,
         backgroundColor: "#ffffff"
       });
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4"
-      });
-      
-      const imgWidth = 210;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      
-      pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
-      pdf.save("Optimized_CV.pdf");
+
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      const pxPerMm = canvas.width / pageWidth;
+      const pageHeightPx = Math.floor(pageHeight * pxPerMm);
+
+      let y = 0;
+      const imgWidth = pageWidth - 20;
+
+      while (y < canvas.height) {
+        const sliceHeight = Math.min(pageHeightPx, canvas.height - y);
+        const tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = canvas.width;
+        tmpCanvas.height = sliceHeight;
+        const ctx = tmpCanvas.getContext('2d');
+        if (!ctx) throw new Error('Could not get canvas context');
+        ctx.drawImage(canvas, 0, y, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+        const imgData = tmpCanvas.toDataURL('image/png');
+
+        const sliceHeightMm = (sliceHeight / canvas.width) * imgWidth;
+
+        if (y > 0) pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, sliceHeightMm);
+
+        y += sliceHeight;
+      }
+
+      pdf.save('Optimized_CV.pdf');
     } catch (err) {
       console.error(err);
       alert("Failed to generate PDF. Please try again.");
@@ -224,7 +269,7 @@ export default function CVAnalyzer({ onBack }: CVAnalyzerProps) {
                 disabled={isAnalyzing || isRewriting || !cvText || !jobDescription}
                 isLoading={isAnalyzing}
                 icon={<Target className="w-4 h-4" />}
-                className="flex-1 py-5 text-xs"
+                className="flex-1 py-4 text-sm min-h-[44px]"
               >
                 {isAnalyzing ? "Processing..." : "Run Analysis"}
               </Button>
@@ -235,10 +280,18 @@ export default function CVAnalyzer({ onBack }: CVAnalyzerProps) {
                 disabled={isAnalyzing || isRewriting || !cvText || !jobDescription}
                 isLoading={isRewriting}
                 icon={<Edit3 className="w-4 h-4" />}
-                className="flex-1 py-5 text-xs"
+                className="flex-1 py-4 text-sm min-h-[44px]"
               >
                 {isRewriting ? "Processing..." : "Auto-Rewrite Resume"}
               </Button>
+            </div>
+
+            {/* Mobile floating action bar for quick access */}
+            <div className="sm:hidden fixed left-4 right-4 bottom-4 z-40">
+              <div className="flex gap-3">
+                <Button variant="accent" onClick={handleAnalyze} disabled={isAnalyzing || isRewriting || !cvText || !jobDescription} isLoading={isAnalyzing} className="flex-1 py-3 text-sm">Run</Button>
+                <Button variant="outline" onClick={handleRewrite} disabled={isAnalyzing || isRewriting || !cvText || !jobDescription} isLoading={isRewriting} className="flex-1 py-3 text-sm">Rewrite</Button>
+              </div>
             </div>
             
             {error && (
@@ -284,18 +337,16 @@ export default function CVAnalyzer({ onBack }: CVAnalyzerProps) {
                         disabled={isExporting}
                         isLoading={isExporting}
                         icon={<FileDown className="w-4 h-4" />}
-                        className="flex-1 sm:flex-none h-10 px-6 text-[10px]"
-                      >
-                        PDF
-                      </Button>
+                        className="flex-1 sm:flex-none h-10 px-3"
+                        title="Export PDF"
+                      />
                       <Button 
                         variant="outline"
                         onClick={exportWord}
                         icon={<Download className="w-4 h-4" />}
-                        className="flex-1 sm:flex-none h-10 px-6 text-[10px]"
-                      >
-                        Word
-                      </Button>
+                        className="flex-1 sm:flex-none h-10 px-3"
+                        title="Export Word"
+                      />
                       <button 
                         onClick={() => copyToClipboard(rewrittenCv!)}
                         className="h-10 w-10 flex items-center justify-center border border-border hover:border-muted text-foreground transition-all"
@@ -342,6 +393,16 @@ export default function CVAnalyzer({ onBack }: CVAnalyzerProps) {
                       <div className="text-[10px] font-bold text-muted mt-2 uppercase tracking-widest">Match Index Score</div>
                     </div>
                   </div>
+                </div>
+
+                <div className="flex justify-end mt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => generateAnalysisPdf({ type: 'analysis', createdAt: new Date().toISOString(), cvText, jobDescription, analysis: result }, `analysis_${new Date().toISOString()}.pdf`)}
+                    className="p-2"
+                    icon={<FileDown />}
+                    title="Download PDF"
+                  />
                 </div>
 
                 {/* Tab Navigation */}
@@ -455,10 +516,10 @@ export default function CVAnalyzer({ onBack }: CVAnalyzerProps) {
                                 <button 
                                   onClick={exportPDF}
                                   disabled={isExporting}
-                                  className="flex items-center space-x-2 text-[10px] font-bold text-muted hover:text-emerald-600 transition-colors uppercase tracking-widest"
+                                  className="flex items-center justify-center w-9 h-9 text-[10px] font-bold text-muted hover:text-emerald-600 transition-colors"
+                                  title="Export PDF"
                                 >
                                   {isExporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileDown className="w-3 h-3" />}
-                                  <span>Export</span>
                                 </button>
                                 <button 
                                   onClick={() => copyToClipboard(rewrittenCv)}
